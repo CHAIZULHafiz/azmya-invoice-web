@@ -107,25 +107,25 @@ export default function AppLayout() {
                   </div>
                 </>
               ) : (
-                <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <img src="/LOGO ACT.png" alt="Logo" style={{ width: '36px' }} />
-                      <div style={{ fontWeight: '800', fontSize: '14px', lineHeight: 1.2 }}>AZMYA CAR TRANSINDO<br /><span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>HIRE THE BEST CAR AT THE BEST PRICE</span></div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <img src="/LOGO ACT.png" alt="Logo" style={{ width: '30px' }} />
+                      <div style={{ fontWeight: '800', fontSize: '13px', lineHeight: 1.2 }}>AZMYA CAR TRANSINDO<br /><span style={{ fontSize: '8px', color: 'var(--text-secondary)' }}>HIRE THE BEST CAR AT THE BEST PRICE</span></div>
                     </div>
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      <button onClick={() => setIsLoginModalOpen(true)} style={{ background: '#F0F3FF', border: 'none', padding: '10px', borderRadius: '10px', color: '#4F46E5' }}><LogIn size={20} /></button>
-                      <button onClick={() => setSidebarOpen(true)} style={{ background: '#F8F9FA', border: 'none', padding: '10px', borderRadius: '10px' }}><MoreVertical size={20} /></button>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <button onClick={() => setIsLoginModalOpen(true)} style={{ background: '#F0F3FF', border: 'none', padding: '8px', borderRadius: '8px', color: '#4F46E5' }}><LogIn size={18} /></button>
+                      <button onClick={() => setSidebarOpen(true)} style={{ background: '#F8F9FA', border: 'none', padding: '8px', borderRadius: '8px' }}><MoreVertical size={18} /></button>
                     </div>
                   </div>
-                  <div style={{ textAlign: 'center', padding: '10px 0' }}>
-                    <h1 style={{ fontSize: '20px', fontWeight: '800', color: 'var(--text-primary)', marginBottom: '4px' }}>{title}</h1>
-                    <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{subtitle}</p>
+                  <div style={{ textAlign: 'center', padding: '5px 0' }}>
+                    <h1 style={{ fontSize: '18px', fontWeight: '800', color: 'var(--text-primary)', marginBottom: '2px' }}>{title}</h1>
+                    <p style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>{subtitle}</p>
                   </div>
-                  <div style={{ background: '#F4F7FF', padding: '5px', borderRadius: '14px', display: 'flex', gap: '4px' }}>
+                  <div style={{ background: '#F4F7FF', padding: '4px', borderRadius: '12px', display: 'flex', gap: '4px' }}>
                     {navTabs.slice(0, 3).map((tab) => (
-                      <NavLink key={tab.path} to={tab.path} className={({ isActive }) => `pill-item ${isActive ? 'active' : ''}`} style={{ flex: 1, textDecoration: 'none' }}>
-                        <div style={{ fontSize: '12px', fontWeight: '700', textAlign: 'center' }}>{tab.label}</div>
+                      <NavLink key={tab.path} to={tab.path} className={({ isActive }) => `pill-item ${isActive ? 'active' : ''}`} style={{ flex: 1, textDecoration: 'none', padding: '6px 0' }}>
+                        <div style={{ fontSize: '11px', fontWeight: '700', textAlign: 'center' }}>{tab.label}</div>
                       </NavLink>
                     ))}
                   </div>
