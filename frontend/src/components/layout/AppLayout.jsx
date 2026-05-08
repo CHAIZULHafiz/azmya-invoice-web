@@ -111,7 +111,7 @@ export default function AppLayout() {
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                       <img src="/LOGO ACT.png" alt="Logo" style={{ width: '36px' }} />
-                      <div style={{ fontWeight: '800', fontSize: '14px', lineHeight: 1.2 }}>AZMYA CAR<br /><span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>TRANSINDO</span></div>
+                      <div style={{ fontWeight: '800', fontSize: '14px', lineHeight: 1.2 }}>AZMYA CAR TRANSINDO<br /><span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>HIRE THE BEST CAR AT THE BEST PRICE</span></div>
                     </div>
                     <div style={{ display: 'flex', gap: '8px' }}>
                       <button onClick={() => setIsLoginModalOpen(true)} style={{ background: '#F0F3FF', border: 'none', padding: '10px', borderRadius: '10px', color: '#4F46E5' }}><LogIn size={20} /></button>
