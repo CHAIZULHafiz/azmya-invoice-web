@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
-export default function StatCard({ icon: Icon, label, value, color, prefix = '', suffix = '', delay = 0 }) {
+export default function StatCard({ icon: Icon, label, subtitle, value, color, prefix = '', suffix = '', delay = 0 }) {
   const [displayValue, setDisplayValue] = useState(0);
   const ref = useRef(null);
 
@@ -29,59 +29,56 @@ export default function StatCard({ icon: Icon, label, value, color, prefix = '',
     return () => clearTimeout(timer);
   }, [value, delay]);
 
-  const gradients = {
-    amber: 'linear-gradient(135deg, #F59E0B, #D97706)',
-    green: 'linear-gradient(135deg, #10B981, #059669)',
-    blue: 'linear-gradient(135deg, #3B82F6, #2563EB)',
-    red: 'linear-gradient(135deg, #EF4444, #DC2626)',
-    purple: 'linear-gradient(135deg, #8B5CF6, #7C3AED)',
+  const textColors = {
+    slate: '#94A3B8',
+    amber: '#F59E0B',
+    indigo: '#4F46E5',
+    emerald: '#10B981',
+    blue: '#3B82F6',
+    red: '#EF4444',
+    green: '#059669',
   };
 
-  const bgColors = {
-    amber: '#FFFBEB',
-    green: '#ECFDF5',
-    blue: '#EFF6FF',
-    red: '#FEF2F2',
-    purple: '#F5F3FF',
-  };
+  const primaryColor = textColors[color] || textColors.slate;
 
   return (
     <div className="card" style={{
-      padding: '24px',
+      padding: '16px',
       display: 'flex',
-      alignItems: 'flex-start',
-      gap: '16px',
+      flexDirection: 'column',
+      gap: '12px',
       animation: `fadeIn 0.5s ease-out ${delay}ms forwards`,
       opacity: 0,
+      border: '1px solid rgba(0,0,0,0.04)',
+      boxShadow: '0 4px 12px rgba(0,0,0,0.02)'
     }}>
-      <div style={{
-        width: '48px',
-        height: '48px',
-        borderRadius: '12px',
-        background: gradients[color] || gradients.amber,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        flexShrink: 0,
-      }}>
-        <Icon size={24} color="white" />
-      </div>
-      <div style={{ flex: 1 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Icon size={20} color={primaryColor} />
         <div style={{
-          fontSize: '13px',
-          fontWeight: '500',
-          color: 'var(--text-secondary)',
-          marginBottom: '4px',
+          fontSize: '11px',
+          fontWeight: '800',
+          textTransform: 'uppercase',
+          color: primaryColor,
+          letterSpacing: '0.5px'
         }}>
           {label}
         </div>
+      </div>
+      <div>
         <div style={{
-          fontSize: '28px',
-          fontWeight: '800',
-          color: 'var(--text-primary)',
+          fontSize: '26px',
+          fontWeight: '500',
+          color: '#1E293B',
           lineHeight: 1.2,
+          marginBottom: '6px'
         }}>
           {prefix}{displayValue.toLocaleString('id-ID')}{suffix}
+        </div>
+        <div style={{
+          fontSize: '12px',
+          color: '#94A3B8'
+        }}>
+          {subtitle}
         </div>
       </div>
     </div>

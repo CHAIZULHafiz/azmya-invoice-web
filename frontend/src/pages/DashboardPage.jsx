@@ -82,14 +82,14 @@ export default function DashboardPage() {
       {/* Stat Cards */}
       <div className="stat-grid" style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-        gap: '20px',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+        gap: '12px',
         marginBottom: '28px',
       }}>
-        <StatCard icon={FileText} label="Total Invoice" value={stats?.total || 0} color="blue" delay={0} />
-        <StatCard icon={Clock} label="Pending" value={stats?.pending || 0} color="red" delay={100} />
-        <StatCard icon={Send} label="Dikirim" value={stats?.dikirim || 0} color="amber" delay={200} />
-        <StatCard icon={CheckCircle} label="Lunas" value={stats?.lunas || 0} color="green" delay={300} />
+        <StatCard icon={FileText} label="TOTAL" subtitle="Invoice Bulan Ini" value={stats?.total || 0} color="slate" delay={0} />
+        <StatCard icon={Clock} label="PENDING" subtitle="Menunggu Pengiriman" value={stats?.pending || 0} color="amber" delay={100} />
+        <StatCard icon={Send} label="DIKIRIM" subtitle="Menunggu Payment" value={stats?.dikirim || 0} color="indigo" delay={200} />
+        <StatCard icon={CheckCircle} label="LUNAS" subtitle="Pembayaran Selesai" value={stats?.lunas || 0} color="emerald" delay={300} />
       </div>
 
 
