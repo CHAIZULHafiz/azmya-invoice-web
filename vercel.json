@@ -17,8 +17,12 @@
       "destination": "/backend/server.js"
     },
     {
-      "source": "/(.*)",
-      "destination": "/frontend/$1"
+      "source": "/(?<file>.*\\..*)",
+      "destination": "/frontend/:file"
+    },
+    {
+      "source": "/(?<path>.*)",
+      "destination": "/frontend/index.html"
     }
   ]
 }
