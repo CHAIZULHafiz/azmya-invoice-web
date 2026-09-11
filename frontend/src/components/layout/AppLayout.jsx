@@ -60,8 +60,8 @@ export default function AppLayout() {
         flex: 1,
         display: 'flex',
         flexDirection: 'column',
-        marginLeft: (!isMobile && user) ? (sidebarExpanded ? 'var(--sidebar-width)' : '80px') : '0',
-        transition: 'margin-left 0.3s ease',
+        marginLeft: (!isMobile && user) ? (sidebarExpanded ? 'var(--sidebar-width)' : '76px') : '0',
+        transition: 'margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
         minHeight: '100vh',
         width: '100%',
       }}>
@@ -137,9 +137,11 @@ export default function AppLayout() {
 
         {user && (
           <div style={{ height: '60px', background: '#FFFFFF', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', padding: '0 16px', position: 'sticky', top: 0, zIndex: 40 }}>
-            <button onClick={isMobile ? () => setSidebarOpen(true) : () => setSidebarExpanded(!sidebarExpanded)} style={{ background: '#F8F9FF', border: 'none', color: 'var(--sidebar-bg)', cursor: 'pointer', padding: '8px', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              {isMobile ? <Menu size={20} /> : (!sidebarExpanded ? <Menu size={20} /> : <X size={20} />)}
-            </button>
+            {isMobile ? (
+              <button onClick={() => setSidebarOpen(true)} style={{ background: '#F8F9FF', border: 'none', color: 'var(--sidebar-bg)', cursor: 'pointer', padding: '8px', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Menu size={20} />
+              </button>
+            ) : null}
             <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
               <div style={{ textAlign: 'right' }}>
                 <div style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-primary)', lineHeight: 1 }}>{user?.username}</div>

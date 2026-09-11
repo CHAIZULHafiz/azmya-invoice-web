@@ -12,10 +12,17 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Username dan password wajib diisi' });
     }
 
+    const cleanUsername = String(username).trim();
+    const cleanPassword = String(password).trim();
+
     const users = await getSheetData('DATA_USER', 'A2:C');
-    const user = users.find(row => row[0] === username && row[1] === password);
+    const user = users.find(row => 
+      String(row[0] || '').trim() === cleanUsername && 
+      String(row[1] || '').trim() === cleanPassword
+    );
 
     if (!user) {
+      console.warn(`[Login Failed] Percobaan login gagal untuk username: "${cleanUsername}"`);
       return res.status(401).json({ success: false, message: 'Username atau password salah' });
     }
 

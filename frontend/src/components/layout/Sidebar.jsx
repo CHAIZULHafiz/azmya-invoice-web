@@ -29,7 +29,7 @@ export default function Sidebar({ isOpen, onClose, onOpenLogin, isExpanded, onTo
     <aside
       className={`sidebar ${isOpen ? 'open' : ''} ${isSlim ? 'slim' : ''}`}
       style={{
-        width: isSlim ? '80px' : 'var(--sidebar-width)',
+        width: isSlim ? '76px' : 'var(--sidebar-width)',
         height: '100vh',
         position: 'fixed',
         left: 0,
@@ -38,14 +38,24 @@ export default function Sidebar({ isOpen, onClose, onOpenLogin, isExpanded, onTo
         display: 'flex',
         flexDirection: 'column',
         zIndex: 100,
-        overflow: 'hidden',
+        overflow: 'visible',
         transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
       }}
     >
-      {/* Sidebar Close/Collapse Button (Only in Expanded mode or Mobile) */}
-      {(isOpen || (user && isExpanded)) && (
+      {/* Floating Circular Chevron Toggle Button (Floating on sidebar border - matching user's mockup) */}
+      <button
+        type="button"
+        onClick={user ? onToggleExpansion : (isOpen ? onClose : () => {})}
+        className="sidebar-floating-toggle"
+        title={isSlim ? 'Perluas Menu' : 'Perkecil Menu'}
+      >
+        {isSlim ? <ChevronRight size={18} /> : <ChevronRight size={18} style={{ transform: 'rotate(180deg)' }} />}
+      </button>
+
+      {/* Mobile Close X Button */}
+      {isOpen && (
         <button
-          onClick={user && isExpanded ? onToggleExpansion : onClose}
+          onClick={onClose}
           style={{
             position: 'absolute',
             top: '20px',

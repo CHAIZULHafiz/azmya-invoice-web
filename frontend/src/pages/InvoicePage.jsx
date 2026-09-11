@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { Filter, ExternalLink, Trash2, RefreshCw, Plus, Send, CheckCircle, Upload, Settings, FileText, XCircle } from 'lucide-react';
+import { Filter, ExternalLink, Trash2, RefreshCw, Plus, Send, CheckCircle, Upload, Settings, FileText, XCircle, Download, Eye, ChevronDown, ChevronUp, X, Check, AlertCircle, FileCheck } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/client';
 import StatusBadge from '../components/ui/StatusBadge';
@@ -13,12 +14,16 @@ export default function InvoicePage() {
   const [units, setUnits] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filterUnit, setFilterUnit] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
+  const [filterPeriode, setFilterPeriode] = useState('');
+  const [activeFilterMenu, setActiveFilterMenu] = useState(null); // 'unit' | 'periode' | 'status' | null
   const [searchTerm, setSearchTerm] = useState('');
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [actionLoading, setActionLoading] = useState(null);
   
   // Unified Manage Modal state
   const [manageTarget, setManageTarget] = useState(null);
+  const [previewPdfUrl, setPreviewPdfUrl] = useState(null);
   
   // Form states inside modal
   const [updateStatus, setUpdateStatus] = useState('');
@@ -27,12 +32,46 @@ export default function InvoicePage() {
   const [inputTglInvoice, setInputTglInvoice] = useState(new Date().toISOString().split('T')[0]);
   const [inputGR, setInputGR] = useState('');
   const [inputDP, setInputDP] = useState('');
-  const [attachedFiles, setAttachedFiles] = useState([]); // Array of { name, base64, type }
+  const [attachedFiles, setAttachedFiles] = useState([]); // Array of { name, size, formattedSize, base64, type }
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadPhase, setUploadPhase] = useState(''); // 'uploading' | 'merging' | 'success' | ''
+
   
   const navigate = useNavigate();
   const { user } = useAuth();
 
+  const handlePreviewPdf = (inv) => {
+    if (!inv.linkPDF) {
+      toast.error('Berkas PDF belum tersedia');
+      return;
+    }
+    const url = inv.linkPDF.replace('/view', '/preview');
+    const fileIdMatch = inv.linkPDF.match(/\/d\/([a-zA-Z0-9_-]+)/);
+    const downloadUrl = fileIdMatch ? `https://drive.google.com/uc?export=download&id=${fileIdMatch[1]}` : inv.linkPDF;
+    setPreviewPdfUrl({
+      original: inv.linkPDF,
+      preview: url,
+      download: downloadUrl,
+      title: inv.noInvoice || 'Dokumen Invoice'
+    });
+  };
+
   useEffect(() => { loadData(); }, []);
+
+  // Close filter dropdown when clicking outside
+  useEffect(() => {
+    const handleOutsideClick = (e) => {
+      if (!e.target.closest('.filter-dropdown-container') && !e.target.closest('.filter-toggle-btn')) {
+        setActiveFilterMenu(null);
+      }
+    };
+    if (activeFilterMenu) {
+      document.addEventListener('click', handleOutsideClick);
+    }
+    return () => {
+      document.removeEventListener('click', handleOutsideClick);
+    };
+  }, [activeFilterMenu]);
 
   const loadData = async () => {
     try {
@@ -49,25 +88,64 @@ export default function InvoicePage() {
     }
   };
 
+  // Indonesian Month Name Mapping & Normalizer
+  const monthIndoToEng = {
+    'Januari': 'January', 'Februari': 'February', 'Maret': 'March', 'April': 'April',
+    'Mei': 'May', 'Juni': 'June', 'Juli': 'July', 'Agustus': 'August',
+    'September': 'September', 'Oktober': 'October', 'November': 'November', 'Desember': 'December'
+  };
+
+  const monthEngToIndo = {
+    'January': 'Januari', 'February': 'Februari', 'March': 'Maret', 'April': 'April',
+    'May': 'Mei', 'June': 'Juni', 'July': 'Juli', 'August': 'Agustus',
+    'September': 'September', 'October': 'Oktober', 'November': 'November', 'Desember': 'Desember'
+  };
+
+  const normalizePeriodeIndo = (periode) => {
+    if (!periode) return '';
+    const parts = periode.trim().split(/\s+/);
+    if (parts.length < 2) return periode;
+    const [month, ...rest] = parts;
+    const year = rest.join(' ');
+    const indoMonth = monthEngToIndo[month] || month;
+    return `${indoMonth} ${year}`.trim();
+  };
+
   const filteredInvoices = invoices.filter(inv => {
     const matchUnit = filterUnit ? inv.pilihUnit.startsWith(filterUnit) : true;
+    const matchStatus = filterStatus ? (
+      filterStatus === 'OVERDUE' ? inv.isOverdue : inv.statusKirim === filterStatus
+    ) : true;
+    const matchPeriode = filterPeriode ? normalizePeriodeIndo(inv.periode) === filterPeriode : true;
     
     const term = searchTerm.toLowerCase();
     const matchSearch = term ? (
       inv.noInvoice.toLowerCase().includes(term) ||
       inv.pilihUnit.toLowerCase().includes(term) ||
       inv.periode.toLowerCase().includes(term) ||
+      normalizePeriodeIndo(inv.periode).toLowerCase().includes(term) ||
       inv.statusKirim.toLowerCase().includes(term) ||
       String(inv.no).includes(term)
     ) : true;
     
-    return matchUnit && matchSearch;
+    return matchUnit && matchStatus && matchPeriode && matchSearch;
   });
 
   const monthOrder = {
+    'Januari': 1, 'Februari': 2, 'Maret': 3, 'April': 4, 'Mei': 5, 'Juni': 6,
+    'Juli': 7, 'Agustus': 8, 'September': 9, 'Oktober': 10, 'November': 11, 'Desember': 12,
     'January': 1, 'February': 2, 'March': 3, 'April': 4, 'May': 5, 'June': 6,
     'July': 7, 'August': 8, 'September': 9, 'October': 10, 'November': 11, 'December': 12
   };
+
+  // Extract unique normalized periodes for filter dropdown (sorted chronologically)
+  const uniquePeriodes = Array.from(new Set(invoices.map(inv => normalizePeriodeIndo(inv.periode)).filter(Boolean)))
+    .sort((a, b) => {
+      const [mA, yA] = a.split(' ');
+      const [mB, yB] = b.split(' ');
+      if (yA !== yB) return (parseInt(yA) || 0) - (parseInt(yB) || 0);
+      return (monthOrder[mA] || 0) - (monthOrder[mB] || 0);
+    });
 
   const sortedInvoices = [...filteredInvoices].sort((a, b) => {
     // 1. Urutkan berdasarkan Tahun
@@ -77,7 +155,7 @@ export default function InvoicePage() {
     if (yearA !== yearB) return parseInt(yearA) - parseInt(yearB);
     
     // 2. Urutkan berdasarkan Bulan
-    if (monthA !== monthB) return monthOrder[monthA] - monthOrder[monthB];
+    if (monthA !== monthB) return (monthOrder[monthA] || 0) - (monthOrder[monthB] || 0);
     
     // 3. Urutkan berdasarkan Tipe Unit (SCI dulu, baru SLB)
     const unitA = a.pilihUnit.split(' - ')[0];
@@ -194,23 +272,46 @@ export default function InvoicePage() {
     }
   };
 
+  const formatFileSize = (bytes) => {
+    if (!bytes || bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  };
+
+  const processSelectedFile = (file, type) => {
+    if (!file) return;
+    if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+      toast.error('File harus berupa dokumen PDF (.pdf)');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = reader.result.split(',')[1];
+      setAttachedFiles(prev => {
+        const filtered = prev.filter(f => f.type !== type);
+        return [...filtered, {
+          name: file.name,
+          size: file.size,
+          formattedSize: formatFileSize(file.size),
+          base64,
+          type
+        }];
+      });
+      setUploadPhase('');
+      setUploadProgress(0);
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleFileSelect = (type) => {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = '.pdf';
-    input.onchange = async (e) => {
+    input.onchange = (e) => {
       const file = e.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = () => {
-        const base64 = reader.result.split(',')[1];
-        setAttachedFiles(prev => {
-          // Replace if same type exists, otherwise add
-          const filtered = prev.filter(f => f.type !== type);
-          return [...filtered, { name: file.name, base64, type }];
-        });
-      };
-      reader.readAsDataURL(file);
+      processSelectedFile(file, type);
     };
     input.click();
   };
@@ -218,17 +319,47 @@ export default function InvoicePage() {
   const submitMergeAttachments = async () => {
     if (!manageTarget || attachedFiles.length === 0) return;
     setActionLoading('merge');
+    setUploadPhase('uploading');
+    setUploadProgress(10);
+
     try {
-      toast.loading('Menggabungkan lampiran ke PDF Utama...', { id: 'merge' });
-      const res = await api.post('/pdf/merge-attachments', {
-        rowIndex: manageTarget.rowIndex,
-        files: attachedFiles.map(f => ({ base64: f.base64, label: f.type }))
-      });
-      toast.success(res.data.message || 'Berhasil digabungkan!', { id: 'merge' });
-      setAttachedFiles([]);
-      loadData();
+      const res = await api.post(
+        '/pdf/merge-attachments',
+        {
+          rowIndex: manageTarget.rowIndex,
+          files: attachedFiles.map(f => ({ base64: f.base64, label: f.type }))
+        },
+        {
+          onUploadProgress: (progressEvent) => {
+            if (progressEvent.total) {
+              const percent = Math.round((progressEvent.loaded * 90) / progressEvent.total);
+              setUploadProgress(Math.max(15, percent));
+              if (percent >= 85) {
+                setUploadPhase('merging');
+              }
+            } else {
+              setUploadProgress(60);
+              setUploadPhase('merging');
+            }
+          }
+        }
+      );
+
+      setUploadProgress(100);
+      setUploadPhase('success');
+      toast.success(res.data.message || 'Berkas berhasil digabungkan!');
+      
+      // Keep success state visible for 1.5 seconds then refresh
+      setTimeout(() => {
+        setAttachedFiles([]);
+        setUploadPhase('');
+        setUploadProgress(0);
+        loadData();
+      }, 1500);
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Gagal menggabungkan lampiran', { id: 'merge' });
+      setUploadPhase('');
+      setUploadProgress(0);
+      toast.error(err.response?.data?.message || 'Gagal menggabungkan lampiran');
     } finally {
       setActionLoading(null);
     }
@@ -258,63 +389,247 @@ export default function InvoicePage() {
         </div>
       )}
 
-      {/* Filter Bar */}
-      <div className="card filter-bar" style={{ padding: '16px 20px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-        <Filter size={18} color="var(--text-muted)" style={{ flexShrink: 0 }} />
-        <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>Filter Unit:</span>
-        <select
-          id="filter-unit"
-          className="form-select"
-          value={filterUnit}
-          onChange={(e) => setFilterUnit(e.target.value)}
-          style={{ padding: '8px 12px', minWidth: '160px' }}
-        >
-          <option value="">Semua Unit</option>
-          {units.map(u => (
-            <option key={u.unit} value={u.unit}>{u.unit}</option>
-          ))}
-        </select>
+      {/* Active Filter Indicators & Reset (Permanent consistent height bar) */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '16px', background: '#fff', padding: '10px 16px', borderRadius: '12px', border: '1px solid var(--border-color)', minHeight: '46px' }}>
+        <span style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Filter Aktif:</span>
         
-        <div className="filter-divider" style={{ width: '1px', height: '24px', background: 'var(--border-color)', margin: '0 8px' }}></div>
-        
-        <input 
-          type="text" 
-          className="form-input" 
-          placeholder="Cari No Invoice, Periode, atau Status..." 
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          style={{ padding: '8px 12px', flex: 1, maxWidth: '350px' }}
-        />
-        
-        <div className="filter-divider" style={{ flex: 1 }} />
-        <span style={{ fontSize: '13px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-          Menampilkan {filteredInvoices.length} dari {invoices.length} invoice
-        </span>
+        {!(filterUnit || filterStatus || filterPeriode || searchTerm) ? (
+          <span style={{ fontSize: '13px', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+            Semua data ditampilkan (tidak ada filter aktif)
+          </span>
+        ) : (
+          <>
+            {filterUnit && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#EEF2FF', color: '#4F46E5', fontSize: '12px', fontWeight: '600', padding: '4px 10px', borderRadius: '20px' }}>
+                Unit: {filterUnit}
+                <X size={13} style={{ cursor: 'pointer' }} onClick={() => setFilterUnit('')} />
+              </span>
+            )}
+
+            {filterPeriode && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#F0FDF4', color: '#16A34A', fontSize: '12px', fontWeight: '600', padding: '4px 10px', borderRadius: '20px' }}>
+                Periode: {formatPeriodeIndo(filterPeriode)}
+                <X size={13} style={{ cursor: 'pointer' }} onClick={() => setFilterPeriode('')} />
+              </span>
+            )}
+
+            {filterStatus && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#FEF3C7', color: '#D97706', fontSize: '12px', fontWeight: '600', padding: '4px 10px', borderRadius: '20px' }}>
+                Status: {filterStatus}
+                <X size={13} style={{ cursor: 'pointer' }} onClick={() => setFilterStatus('')} />
+              </span>
+            )}
+
+            {searchTerm && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#F3F4F6', color: '#4B5563', fontSize: '12px', fontWeight: '600', padding: '4px 10px', borderRadius: '20px' }}>
+                Cari: "{searchTerm}"
+                <X size={13} style={{ cursor: 'pointer' }} onClick={() => setSearchTerm('')} />
+              </span>
+            )}
+
+            <button 
+              onClick={() => { setFilterUnit(''); setFilterStatus(''); setFilterPeriode(''); setSearchTerm(''); }}
+              style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#EF4444', fontSize: '12px', fontWeight: '600', cursor: 'pointer', textDecoration: 'underline' }}
+            >
+              Reset Semua Filter
+            </button>
+          </>
+        )}
       </div>
 
       {/* Table */}
-      <div className="card" style={{ overflow: 'hidden' }}>
+      <div className="card" style={{ overflow: 'visible' }}>
         {sortedInvoices.length === 0 ? (
           <div style={{ padding: '60px', textAlign: 'center', color: 'var(--text-muted)' }}>
             <FileText size={48} style={{ marginBottom: '12px', opacity: 0.3 }} />
-            <p>Belum ada data invoice</p>
+            <p>Belum ada data invoice yang sesuai kriteria</p>
+            {(filterUnit || filterStatus || filterPeriode || searchTerm) && (
+              <button 
+                className="btn btn-secondary btn-sm"
+                onClick={() => { setFilterUnit(''); setFilterStatus(''); setFilterPeriode(''); setSearchTerm(''); }}
+                style={{ marginTop: '12px' }}
+              >
+                Hapus Filter
+              </button>
+            )}
           </div>
          ) : (
           <>
-            <div className="table-container desktop-table" style={{ border: 'none', borderRadius: 0 }}>
-              <table className="data-table">
+            <div className="table-container desktop-table" style={{ border: 'none', borderRadius: 0, overflow: 'visible', position: 'relative' }}>
+              <table className="data-table" style={{ overflow: 'visible' }}>
                 <thead>
                   <tr>
-                    <th>No</th>
-                    <th>Unit</th>
-                    <th>No Invoice</th>
-                    {hasSLB && <th>No PO / DP</th>}
-                    <th>Periode</th>
-                    <th>Tgl Dokumen</th>
-                    <th>Tgl Kirim</th>
-                    <th>Jatuh Tempo</th>
-                    <th>Status</th>
-                    {user && <th>Aksi</th>}
+                    <th>NO</th>
+
+                    {/* UNIT with filter dropdown */}
+                    <th style={{ position: 'relative', overflow: 'visible' }}>
+                      <div 
+                        className="filter-toggle-btn"
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', cursor: 'pointer', userSelect: 'none', padding: '4px 6px', borderRadius: '6px' }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveFilterMenu(prev => prev === 'unit' ? null : 'unit');
+                        }}
+                      >
+                        <span style={{ color: filterUnit ? '#4F46E5' : 'inherit', fontWeight: filterUnit ? '800' : 'inherit' }}>UNIT</span>
+                        <Filter size={13} color={filterUnit ? '#4F46E5' : '#9CA3AF'} />
+                        {activeFilterMenu === 'unit' ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                      </div>
+
+                      {activeFilterMenu === 'unit' && (
+                        <div 
+                          className="filter-dropdown-container"
+                          style={{
+                            position: 'absolute',
+                            top: '100%',
+                            left: 0,
+                            zIndex: 9999,
+                            background: '#fff',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: '10px',
+                            boxShadow: '0 10px 25px -5px rgba(0,0,0,0.2)',
+                            minWidth: '160px',
+                            padding: '6px 0',
+                            marginTop: '4px',
+                            textAlign: 'left'
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <div 
+                            style={{ padding: '8px 14px', fontSize: '12px', cursor: 'pointer', fontWeight: !filterUnit ? '700' : 'normal', background: !filterUnit ? '#EEF2FF' : 'transparent', color: !filterUnit ? '#4F46E5' : '#374151' }}
+                            onClick={() => { setFilterUnit(''); setActiveFilterMenu(null); }}
+                          >
+                            Semua Unit
+                          </div>
+                          {units.map(u => (
+                            <div 
+                              key={u.unit}
+                              style={{ padding: '8px 14px', fontSize: '12px', cursor: 'pointer', fontWeight: filterUnit === u.unit ? '700' : 'normal', background: filterUnit === u.unit ? '#EEF2FF' : 'transparent', color: filterUnit === u.unit ? '#4F46E5' : '#374151' }}
+                              onClick={() => { setFilterUnit(u.unit); setActiveFilterMenu(null); }}
+                            >
+                              {u.unit}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </th>
+
+                    <th>NO INVOICE</th>
+                    {hasSLB && <th>NO PO / DP</th>}
+
+                    {/* PERIODE with filter dropdown */}
+                    <th style={{ position: 'relative', overflow: 'visible' }}>
+                      <div 
+                        className="filter-toggle-btn"
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', cursor: 'pointer', userSelect: 'none', padding: '4px 6px', borderRadius: '6px' }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveFilterMenu(prev => prev === 'periode' ? null : 'periode');
+                        }}
+                      >
+                        <span style={{ color: filterPeriode ? '#16A34A' : 'inherit', fontWeight: filterPeriode ? '800' : 'inherit' }}>PERIODE</span>
+                        <Filter size={13} color={filterPeriode ? '#16A34A' : '#9CA3AF'} />
+                        {activeFilterMenu === 'periode' ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                      </div>
+
+                      {activeFilterMenu === 'periode' && (
+                        <div 
+                          className="filter-dropdown-container"
+                          style={{
+                            position: 'absolute',
+                            top: '100%',
+                            left: 0,
+                            zIndex: 9999,
+                            background: '#fff',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: '10px',
+                            boxShadow: '0 10px 25px -5px rgba(0,0,0,0.2)',
+                            minWidth: '180px',
+                            maxHeight: '260px',
+                            overflowY: 'auto',
+                            padding: '6px 0',
+                            marginTop: '4px',
+                            textAlign: 'left'
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <div 
+                            style={{ padding: '8px 14px', fontSize: '12px', cursor: 'pointer', fontWeight: !filterPeriode ? '700' : 'normal', background: !filterPeriode ? '#F0FDF4' : 'transparent', color: !filterPeriode ? '#16A34A' : '#374151' }}
+                            onClick={() => { setFilterPeriode(''); setActiveFilterMenu(null); }}
+                          >
+                            Semua Periode
+                          </div>
+                          {uniquePeriodes.map(p => (
+                            <div 
+                              key={p}
+                              style={{ padding: '8px 14px', fontSize: '12px', cursor: 'pointer', fontWeight: filterPeriode === p ? '700' : 'normal', background: filterPeriode === p ? '#F0FDF4' : 'transparent', color: filterPeriode === p ? '#16A34A' : '#374151' }}
+                              onClick={() => { setFilterPeriode(p); setActiveFilterMenu(null); }}
+                            >
+                              {formatPeriodeIndo(p)}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </th>
+
+                    <th>TGL DOKUMEN</th>
+                    <th>TGL KIRIM</th>
+                    <th>JATUH TEMPO</th>
+
+                    {/* STATUS with filter dropdown */}
+                    <th style={{ position: 'relative', overflow: 'visible' }}>
+                      <div 
+                        className="filter-toggle-btn"
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', cursor: 'pointer', userSelect: 'none', padding: '4px 6px', borderRadius: '6px' }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveFilterMenu(prev => prev === 'status' ? null : 'status');
+                        }}
+                      >
+                        <span style={{ color: filterStatus ? '#D97706' : 'inherit', fontWeight: filterStatus ? '800' : 'inherit' }}>STATUS</span>
+                        <Filter size={13} color={filterStatus ? '#D97706' : '#9CA3AF'} />
+                        {activeFilterMenu === 'status' ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                      </div>
+
+                      {activeFilterMenu === 'status' && (
+                        <div 
+                          className="filter-dropdown-container"
+                          style={{
+                            position: 'absolute',
+                            top: '100%',
+                            right: 0,
+                            zIndex: 9999,
+                            background: '#fff',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: '10px',
+                            boxShadow: '0 10px 25px -5px rgba(0,0,0,0.2)',
+                            minWidth: '170px',
+                            padding: '6px 0',
+                            marginTop: '4px',
+                            textAlign: 'left'
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <div 
+                            style={{ padding: '8px 14px', fontSize: '12px', cursor: 'pointer', fontWeight: !filterStatus ? '700' : 'normal', background: !filterStatus ? '#FEF3C7' : 'transparent', color: !filterStatus ? '#D97706' : '#374151' }}
+                            onClick={() => { setFilterStatus(''); setActiveFilterMenu(null); }}
+                          >
+                            Semua Status
+                          </div>
+                          {['PENDING', 'MENUNGGU PO', 'DIKIRIM', 'LUNAS', 'OVERDUE'].map(st => (
+                            <div 
+                              key={st}
+                              style={{ padding: '8px 14px', fontSize: '12px', cursor: 'pointer', fontWeight: filterStatus === st ? '700' : 'normal', background: filterStatus === st ? '#FEF3C7' : 'transparent', color: filterStatus === st ? '#D97706' : '#374151' }}
+                              onClick={() => { setFilterStatus(st); setActiveFilterMenu(null); }}
+                            >
+                              {st === 'OVERDUE' ? '⚠️ OVERDUE' : st}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </th>
+
+                    {user && <th>AKSI</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -346,8 +661,50 @@ export default function InvoicePage() {
                       <td><StatusBadge status={inv.statusKirim} isOverdue={inv.isOverdue} overdueDays={inv.overdueDays} daysLeft={inv.daysLeft} /></td>
                       {user && (
                         <td>
-                          <div style={{ position: 'relative' }}>
-                            <button className="btn btn-sm" onClick={() => {
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            {inv.linkPDF ? (
+                              <button
+                                className="btn btn-sm"
+                                title="Lihat PDF"
+                                onClick={() => handlePreviewPdf(inv)}
+                                style={{
+                                  padding: '6px 8px',
+                                  background: '#EEF2FF',
+                                  color: '#4F46E5',
+                                  borderRadius: '6px',
+                                  border: '1px solid #C7D2FE',
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center'
+                                }}
+                              >
+                                <Eye size={15} />
+                              </button>
+                            ) : (
+                              <button
+                                className="btn btn-sm"
+                                disabled
+                                title="PDF belum ada"
+                                style={{
+                                  padding: '6px 8px',
+                                  background: '#F3F4F6',
+                                  color: '#9CA3AF',
+                                  borderRadius: '6px',
+                                  border: '1px solid #E5E7EB',
+                                  cursor: 'not-allowed',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center'
+                                }}
+                              >
+                                <Eye size={15} />
+                              </button>
+                            )}
+
+                            <button
+                              className="btn btn-sm"
+                              onClick={() => {
                                 setManageTarget(inv);
                                 setUpdateStatus(inv.statusKirim);
                                 setUpdateTglKirim(inv.tglPengiriman || new Date().toISOString().split('T')[0]);
@@ -357,7 +714,8 @@ export default function InvoicePage() {
                                 setInputDP(inv.noDP || '');
                                 setAttachedFiles([]);
                               }}
-                              style={{ padding: '6px 10px', background: '#F3F4F6', color: '#4B5563', borderRadius: '6px', width: '100%' }}>
+                              style={{ padding: '6px 10px', background: '#F3F4F6', color: '#4B5563', borderRadius: '6px', whiteSpace: 'nowrap' }}
+                            >
                               <Settings size={14} /> Kelola
                             </button>
                           </div>
@@ -405,18 +763,46 @@ export default function InvoicePage() {
                     )}
 
                     {user && (
-                      <button className="btn btn-sm btn-secondary" style={{ width: '100%', justifyContent: 'center' }} onClick={() => {
-                        setManageTarget(inv);
-                        setUpdateStatus(inv.statusKirim);
-                        setUpdateTglKirim(inv.tglPengiriman || new Date().toISOString().split('T')[0]);
-                        setInputPO(inv.noPO || '');
-                        setInputGR('');
-                        setInputTglInvoice(new Date().toISOString().split('T')[0]);
-                        setInputDP(inv.noDP || '');
-                        setAttachedFiles([]);
-                      }}>
-                        <Settings size={14} /> Kelola Invoice
-                      </button>
+                      <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
+                        {inv.linkPDF ? (
+                          <button
+                            className="btn btn-sm"
+                            title="Lihat PDF"
+                            onClick={() => handlePreviewPdf(inv)}
+                            style={{
+                              padding: '8px 12px',
+                              background: '#EEF2FF',
+                              color: '#4F46E5',
+                              borderRadius: '8px',
+                              border: '1px solid #C7D2FE',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '6px'
+                            }}
+                          >
+                            <Eye size={15} /> PDF
+                          </button>
+                        ) : null}
+
+                        <button
+                          className="btn btn-sm btn-secondary"
+                          style={{ flex: 1, justifyContent: 'center' }}
+                          onClick={() => {
+                            setManageTarget(inv);
+                            setUpdateStatus(inv.statusKirim);
+                            setUpdateTglKirim(inv.tglPengiriman || new Date().toISOString().split('T')[0]);
+                            setInputPO(inv.noPO || '');
+                            setInputGR('');
+                            setInputTglInvoice(new Date().toISOString().split('T')[0]);
+                            setInputDP(inv.noDP || '');
+                            setAttachedFiles([]);
+                          }}
+                        >
+                          <Settings size={14} /> Kelola Invoice
+                        </button>
+                      </div>
                     )}
                   </div>
                 ))}
@@ -435,30 +821,30 @@ export default function InvoicePage() {
         onCancel={() => setDeleteTarget(null)}
       />
 
-      {/* Unified Manage Invoice Modal */}
-      {manageTarget && (
+      {manageTarget && createPortal(
         <div style={{
           position: 'fixed', 
-          top: 0, left: 0, right: 0, bottom: 0,
+          top: 0, left: 0, width: '100vw', height: '100vh',
           zIndex: 9999, 
-          display: 'flex', 
-          alignItems: 'center', 
+          display: 'flex',
+          alignItems: 'center',
           justifyContent: 'center',
-          background: 'rgba(0,0,0,0.7)', 
-          backdropFilter: 'blur(6px)', 
+          background: 'rgba(0,0,0,0.6)', 
+          backdropFilter: 'blur(4px)', 
           animation: 'fadeIn 0.2s ease-out',
-          padding: '16px'
+          padding: '24px'
         }} onClick={() => setManageTarget(null)}>
           <div className="card" style={{ 
             padding: '24px', 
             maxWidth: '550px', 
             width: '100%', 
-            maxHeight: 'calc(100vh - 40px)', 
+            maxHeight: '90vh',
             overflowY: 'auto',
             position: 'relative',
-            borderRadius: '20px'
+            borderRadius: '20px',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)'
           }} onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', position: 'sticky', top: 0, background: '#fff', zIndex: 10, paddingBottom: '10px', borderBottom: '1px solid #f0f0f0' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', paddingBottom: '10px', borderBottom: '1px solid #f0f0f0' }}>
               <h3 style={{ fontSize: '18px', fontWeight: '800', color: 'var(--text-primary)' }}>Kelola Invoice</h3>
               <button className="btn btn-secondary btn-sm" onClick={() => setManageTarget(null)} style={{ borderRadius: '10px' }}>Tutup</button>
             </div>
@@ -470,143 +856,255 @@ export default function InvoicePage() {
 
             {/* Quick Actions */}
             <div style={{ display: 'flex', gap: '8px', marginBottom: '24px', flexWrap: 'wrap' }}>
-              {manageTarget.linkPDF && (
-                <a href={manageTarget.linkPDF} target="_blank" rel="noopener noreferrer" className="btn btn-sm btn-secondary">
-                  <ExternalLink size={14} /> Lihat PDF
-                </a>
-              )}
               <button className="btn btn-sm btn-danger" onClick={() => { setDeleteTarget(manageTarget); setManageTarget(null); }}>
                 <Trash2 size={14} /> Hapus Invoice
               </button>
             </div>
 
-            {/* Lampiran PDF (Khusus SLB) */}
-            {manageTarget.pilihUnit.startsWith('SLB') && manageTarget.statusKirim !== 'MENUNGGU PO' && (
-              <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '16px', marginBottom: '16px', background: '#F0F9FF', padding: '16px', borderRadius: '12px' }}>
-                <h4 style={{ fontSize: '14px', fontWeight: '600', marginBottom: '12px', color: '#0369A1', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <FileText size={16} /> Lampiran Berkas (PDF)
-                </h4>
-                
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {/* PO Client Input */}
-                  <div style={{ background: '#fff', padding: '10px', borderRadius: '8px', border: '1px dashed #BAE6FD' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: '13px', fontWeight: '500' }}>File PO Client</span>
-                      {!attachedFiles.find(f => f.type === 'PO') ? (
-                        <button className="btn btn-sm" onClick={() => handleFileSelect('PO')} style={{ fontSize: '11px', padding: '4px 8px' }}>Pilih File</button>
-                      ) : (
-                        <button onClick={() => setAttachedFiles(prev => prev.filter(f => f.type !== 'PO'))} style={{ color: '#EF4444', border: 'none', background: 'none', cursor: 'pointer' }}>
-                          <XCircle size={16} />
-                        </button>
-                      )}
+            {/* Lampiran Berkas (PDF) - Unified Modern Upload with Animated Progress Bar */}
+            {manageTarget.statusKirim !== 'MENUNGGU PO' && (
+              <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '16px', marginBottom: '16px', background: '#F8FAFC', padding: '16px', borderRadius: '14px', border: '1px solid #E2E8F0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                  <h4 style={{ fontSize: '14px', fontWeight: '700', color: '#0F172A', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div style={{ width: '26px', height: '26px', borderRadius: '6px', background: '#EEF2FF', color: '#4F46E5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <FileText size={15} />
                     </div>
-                    {attachedFiles.find(f => f.type === 'PO') && (
-                      <div style={{ fontSize: '11px', color: '#0369A1', marginTop: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        📎 {attachedFiles.find(f => f.type === 'PO').name}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Faktur Pajak Input */}
-                  <div style={{ background: '#fff', padding: '10px', borderRadius: '8px', border: '1px dashed #BAE6FD' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: '13px', fontWeight: '500' }}>Faktur Pajak</span>
-                      {!attachedFiles.find(f => f.type === 'Faktur') ? (
-                        <button className="btn btn-sm" onClick={() => handleFileSelect('Faktur')} style={{ fontSize: '11px', padding: '4px 8px' }}>Pilih File</button>
-                      ) : (
-                        <button onClick={() => setAttachedFiles(prev => prev.filter(f => f.type !== 'Faktur'))} style={{ color: '#EF4444', border: 'none', background: 'none', cursor: 'pointer' }}>
-                          <XCircle size={16} />
-                        </button>
-                      )}
-                    </div>
-                    {attachedFiles.find(f => f.type === 'Faktur') && (
-                      <div style={{ fontSize: '11px', color: '#0369A1', marginTop: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        📎 {attachedFiles.find(f => f.type === 'Faktur').name}
-                      </div>
-                    )}
-                  </div>
-
-                  <button 
-                    className="btn btn-primary" 
-                    disabled={attachedFiles.length === 0 || actionLoading === 'merge'} 
-                    onClick={submitMergeAttachments}
-                    style={{ background: '#0369A1', marginTop: '4px' }}
-                  >
-                    {actionLoading === 'merge' ? 'Sedang Menggabungkan...' : 'Gabungkan ke PDF Utama'}
-                  </button>
-                  <p style={{ fontSize: '10px', color: '#64748B', textAlign: 'center' }}>
-                    * Lampiran akan ditambahkan ke halaman akhir PDF utama.
-                  </p>
+                    Lampiran Berkas (PDF)
+                  </h4>
+                  <span style={{ fontSize: '11px', color: '#64748B', fontWeight: '600' }}>
+                    {manageTarget.pilihUnit.startsWith('SLB') ? 'PO & Faktur' : 'Faktur Pajak'}
+                  </span>
                 </div>
-              </div>
-            )}
 
-            {/* Lampiran PDF (Khusus SCI) */}
-            {!manageTarget.pilihUnit.startsWith('SLB') && (
-              <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '16px', marginBottom: '16px', background: '#F0F9FF', padding: '16px', borderRadius: '12px' }}>
-                <h4 style={{ fontSize: '14px', fontWeight: '600', marginBottom: '12px', color: '#0369A1', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <FileText size={16} /> Lampiran Berkas (PDF)
-                </h4>
-                
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {/* Faktur Pajak Input dengan Drag and Drop */}
-                  <div 
-                    style={{ background: '#fff', padding: '10px', borderRadius: '8px', border: '1px dashed #BAE6FD', cursor: 'pointer', transition: 'all 0.2s ease' }}
-                    onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.style.borderColor = '#0284C7'; e.currentTarget.style.background = '#F0F9FF'; }}
-                    onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.style.borderColor = '#BAE6FD'; e.currentTarget.style.background = '#fff'; }}
-                    onDrop={(e) => { 
-                      e.preventDefault(); 
-                      e.stopPropagation(); 
-                      e.currentTarget.style.borderColor = '#BAE6FD'; 
-                      e.currentTarget.style.background = '#fff';
-                      const file = e.dataTransfer.files[0];
-                      if (file) {
-                        const reader = new FileReader();
-                        reader.onload = () => {
-                          const base64 = reader.result.split(',')[1];
-                          setAttachedFiles(prev => {
-                            const filtered = prev.filter(f => f.type !== 'Faktur');
-                            return [...filtered, { name: file.name, base64, type: 'Faktur' }];
-                          });
-                        };
-                        reader.readAsDataURL(file);
+                {/* Dropzone Area (if files not yet selected) */}
+                <div style={{ display: 'grid', gridTemplateColumns: manageTarget.pilihUnit.startsWith('SLB') ? '1fr 1fr' : '1fr', gap: '10px', marginBottom: '12px' }}>
+                  {/* Slot PO Client (SLB only) */}
+                  {manageTarget.pilihUnit.startsWith('SLB') && (
+                    <div
+                      style={{
+                        background: '#FFFFFF',
+                        border: '1.5px dashed #CBD5E1',
+                        borderRadius: '10px',
+                        padding: '12px',
+                        textAlign: 'center',
+                        cursor: actionLoading === 'merge' ? 'not-allowed' : 'pointer',
+                        transition: 'all 0.2s ease',
+                      }}
+                      onDragOver={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = '#4F46E5'; e.currentTarget.style.background = '#EEF2FF'; }}
+                      onDragLeave={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = '#CBD5E1'; e.currentTarget.style.background = '#FFFFFF'; }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        e.currentTarget.style.borderColor = '#CBD5E1';
+                        e.currentTarget.style.background = '#FFFFFF';
+                        if (actionLoading !== 'merge' && e.dataTransfer.files?.[0]) {
+                          processSelectedFile(e.dataTransfer.files[0], 'PO');
+                        }
+                      }}
+                      onClick={() => {
+                        if (actionLoading !== 'merge') handleFileSelect('PO');
+                      }}
+                    >
+                      <Upload size={18} style={{ margin: '0 auto 4px', color: '#4F46E5' }} />
+                      <div style={{ fontSize: '12px', fontWeight: '700', color: '#1E293B' }}>Pilih File PO Client</div>
+                      <div style={{ fontSize: '10px', color: '#64748B' }}>Format .PDF (Tarik file ke sini)</div>
+                    </div>
+                  )}
+
+                  {/* Slot Faktur Pajak */}
+                  <div
+                    style={{
+                      background: '#FFFFFF',
+                      border: '1.5px dashed #CBD5E1',
+                      borderRadius: '10px',
+                      padding: '12px',
+                      textAlign: 'center',
+                      cursor: actionLoading === 'merge' ? 'not-allowed' : 'pointer',
+                      transition: 'all 0.2s ease',
+                    }}
+                    onDragOver={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = '#4F46E5'; e.currentTarget.style.background = '#EEF2FF'; }}
+                    onDragLeave={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = '#CBD5E1'; e.currentTarget.style.background = '#FFFFFF'; }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      e.currentTarget.style.borderColor = '#CBD5E1';
+                      e.currentTarget.style.background = '#FFFFFF';
+                      if (actionLoading !== 'merge' && e.dataTransfer.files?.[0]) {
+                        processSelectedFile(e.dataTransfer.files[0], 'Faktur');
                       }
                     }}
                     onClick={() => {
-                      if (!attachedFiles.find(f => f.type === 'Faktur')) {
-                        handleFileSelect('Faktur');
-                      }
+                      if (actionLoading !== 'merge') handleFileSelect('Faktur');
                     }}
                   >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: '13px', fontWeight: '500' }}>Faktur Pajak <span style={{fontSize: '10px', color: '#64748B', fontWeight: 'normal'}}>(Tarik file ke sini)</span></span>
-                      {!attachedFiles.find(f => f.type === 'Faktur') ? (
-                        <button className="btn btn-sm" onClick={(e) => { e.stopPropagation(); handleFileSelect('Faktur'); }} style={{ fontSize: '11px', padding: '4px 8px' }}>Pilih File</button>
-                      ) : (
-                        <button onClick={(e) => { e.stopPropagation(); setAttachedFiles(prev => prev.filter(f => f.type !== 'Faktur')); }} style={{ color: '#EF4444', border: 'none', background: 'none', cursor: 'pointer' }}>
-                          <XCircle size={16} />
-                        </button>
-                      )}
-                    </div>
-                    {attachedFiles.find(f => f.type === 'Faktur') && (
-                      <div style={{ fontSize: '11px', color: '#0369A1', marginTop: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        📎 {attachedFiles.find(f => f.type === 'Faktur').name}
-                      </div>
-                    )}
+                    <Upload size={18} style={{ margin: '0 auto 4px', color: '#4F46E5' }} />
+                    <div style={{ fontSize: '12px', fontWeight: '700', color: '#1E293B' }}>Pilih Faktur Pajak</div>
+                    <div style={{ fontSize: '10px', color: '#64748B' }}>Format .PDF (Tarik file ke sini)</div>
                   </div>
-
-                  <button 
-                    className="btn btn-primary" 
-                    disabled={attachedFiles.length === 0 || actionLoading === 'merge'} 
-                    onClick={submitMergeAttachments}
-                    style={{ background: '#0369A1', marginTop: '4px' }}
-                  >
-                    {actionLoading === 'merge' ? 'Sedang Menggabungkan...' : 'Gabungkan ke PDF Utama'}
-                  </button>
-                  <p style={{ fontSize: '10px', color: '#64748B', textAlign: 'center' }}>
-                    * Lampiran akan ditambahkan ke halaman akhir PDF utama.
-                  </p>
                 </div>
+
+                {/* Selected Files Animated Cards */}
+                {attachedFiles.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '14px' }}>
+                    {attachedFiles.map((file) => (
+                      <div
+                        key={file.type}
+                        className={uploadPhase === 'uploading' ? 'upload-card-active' : ''}
+                        style={{
+                          background: '#FFFFFF',
+                          border: '1px solid #E2E8F0',
+                          borderRadius: '12px',
+                          padding: '12px 14px',
+                          boxShadow: '0 2px 4px rgba(0,0,0,0.03)',
+                          position: 'relative',
+                          overflow: 'hidden',
+                          transition: 'all 0.3s ease'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          {/* File Icon Badge */}
+                          <div style={{
+                            width: '40px',
+                            height: '40px',
+                            borderRadius: '10px',
+                            background: uploadPhase === 'success' ? '#ECFDF5' : '#FEF2F2',
+                            color: uploadPhase === 'success' ? '#10B981' : '#EF4444',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0,
+                            fontWeight: '800',
+                            fontSize: '9px',
+                            letterSpacing: '0.5px'
+                          }}>
+                            {uploadPhase === 'success' ? (
+                              <Check size={18} color="#10B981" />
+                            ) : (
+                              <>
+                                <FileText size={16} />
+                                <span>PDF</span>
+                              </>
+                            )}
+                          </div>
+
+                          {/* File Details */}
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
+                              <span style={{
+                                fontSize: '10px',
+                                fontWeight: '700',
+                                background: '#EEF2FF',
+                                color: '#4F46E5',
+                                padding: '1px 6px',
+                                borderRadius: '4px',
+                                textTransform: 'uppercase'
+                              }}>
+                                {file.type === 'PO' ? 'PO Client' : 'Faktur Pajak'}
+                              </span>
+                              <strong style={{ fontSize: '13px', color: '#0F172A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {file.name}
+                              </strong>
+                            </div>
+
+                            {/* Status subtitle */}
+                            <div style={{ fontSize: '11px', color: '#64748B', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              {uploadPhase === 'uploading' && (
+                                <span style={{ color: '#4F46E5', fontWeight: '600' }}>
+                                  Mengunggah {uploadProgress}% • {file.formattedSize || 'PDF'}
+                                </span>
+                              )}
+                              {uploadPhase === 'merging' && (
+                                <span style={{ color: '#D97706', fontWeight: '600' }}>
+                                  Menggabungkan ke PDF Utama...
+                                </span>
+                              )}
+                              {uploadPhase === 'success' && (
+                                <span style={{ color: '#16A34A', fontWeight: '600' }}>
+                                  ✓ Selesai digabungkan
+                                </span>
+                              )}
+                              {!uploadPhase && (
+                                <span>
+                                  Siap digabung • {file.formattedSize || 'PDF'}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Action / Remove Button */}
+                          {uploadPhase !== 'uploading' && uploadPhase !== 'merging' && (
+                            <button
+                              type="button"
+                              onClick={() => setAttachedFiles(prev => prev.filter(f => f.type !== file.type))}
+                              style={{
+                                width: '26px',
+                                height: '26px',
+                                borderRadius: '50%',
+                                border: 'none',
+                                background: '#F1F5F9',
+                                color: '#64748B',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                transition: 'all 0.15s ease'
+                              }}
+                              title="Hapus / ganti file"
+                            >
+                              <X size={14} />
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Progress Bar Line */}
+                        {uploadPhase && (
+                          <div style={{ marginTop: '10px', height: '6px', background: '#E2E8F0', borderRadius: '3px', overflow: 'hidden' }}>
+                            <div
+                              className={uploadPhase === 'uploading' ? 'upload-progress-bar-animated' : ''}
+                              style={{
+                                height: '100%',
+                                width: `${uploadProgress}%`,
+                                background: uploadPhase === 'success' ? '#10B981' : 'linear-gradient(90deg, #4F46E5, #6366F1)',
+                                borderRadius: '3px',
+                                transition: 'width 0.3s ease'
+                              }}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Submit Merge Button */}
+                <button
+                  className="btn btn-primary"
+                  disabled={attachedFiles.length === 0 || actionLoading === 'merge'}
+                  onClick={submitMergeAttachments}
+                  style={{
+                    width: '100%',
+                    background: uploadPhase === 'success' ? '#10B981' : '#4F46E5',
+                    borderRadius: '10px',
+                    padding: '10px',
+                    fontWeight: '700',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px'
+                  }}
+                >
+                  {uploadPhase === 'uploading' ? (
+                    <>Mengunggah Berkas ({uploadProgress}%)...</>
+                  ) : uploadPhase === 'merging' ? (
+                    <>Menggabungkan ke PDF Utama...</>
+                  ) : uploadPhase === 'success' ? (
+                    <><Check size={16} /> Berhasil Digabungkan!</>
+                  ) : (
+                    <>Gabungkan {attachedFiles.length} Berkas ke PDF Utama</>
+                  )}
+                </button>
+                <p style={{ fontSize: '11px', color: '#64748B', textAlign: 'center', marginTop: '6px' }}>
+                  * Lampiran otomatis digabungkan ke halaman akhir dokumen PDF utama di Google Drive.
+                </p>
               </div>
             )}
 
@@ -679,7 +1177,67 @@ export default function InvoicePage() {
             )}
 
           </div>
-        </div>
+        </div>,
+        document.body
+      )}
+
+      {/* PDF Preview Modal */}
+      {previewPdfUrl && createPortal(
+        <div style={{
+          position: 'fixed', 
+          top: 0, left: 0, width: '100vw', height: '100vh',
+          zIndex: 10000, 
+          display: 'flex', 
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: 'rgba(0,0,0,0.6)', 
+          backdropFilter: 'blur(4px)', 
+          animation: 'fadeIn 0.2s ease-out',
+          padding: '24px'
+        }} onClick={() => setPreviewPdfUrl(null)}>
+          <div style={{ 
+            margin: 'auto',
+            width: '100%', 
+            maxWidth: '850px', 
+            height: '80vh', 
+            background: '#fff', 
+            borderRadius: '12px', 
+            display: 'flex', 
+            flexDirection: 'column',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+            overflow: 'hidden'
+          }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px', background: '#323639', color: '#f1f1f1', borderTopLeftRadius: '12px', borderTopRightRadius: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                <div style={{ padding: '4px', color: '#f1f1f1', opacity: 0.8 }}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+                </div>
+                <span style={{ fontSize: '14px', fontWeight: '500', fontFamily: 'sans-serif', letterSpacing: '0.3px', color: '#f1f1f1' }}>
+                  {previewPdfUrl.title}
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+                <a href={previewPdfUrl.download} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#f1f1f1', textDecoration: 'none', background: 'rgba(255,255,255,0.1)', padding: '6px 12px', borderRadius: '4px' }}>
+                  <Download size={14} /> Download
+                </a>
+                <a href={previewPdfUrl.original} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#f1f1f1', textDecoration: 'none', background: 'rgba(255,255,255,0.1)', padding: '6px 12px', borderRadius: '4px' }}>
+                  <ExternalLink size={14} /> Buka Asli
+                </a>
+                <button onClick={() => setPreviewPdfUrl(null)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#f1f1f1', display: 'flex', alignItems: 'center', padding: '4px' }}>
+                  <span style={{ fontSize: '20px', lineHeight: 1 }}>✕</span>
+                </button>
+              </div>
+            </div>
+            <div style={{ flex: 1, padding: '0', display: 'flex', justifyContent: 'center', background: '#525659' }}>
+              <iframe 
+                src={previewPdfUrl.preview} 
+                style={{ width: '100%', height: '100%', border: 'none' }} 
+                title="PDF Preview"
+              />
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );

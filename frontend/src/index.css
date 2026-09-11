@@ -377,16 +377,48 @@ body {
 }
 
 /* Sidebar behavior for Guest vs Admin */
-.sidebar.slim {
-  width: 80px !important;
+.sidebar {
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
 }
-.sidebar.slim span, .sidebar.slim .chevron-icon {
-  display: none;
+
+.sidebar.slim {
+  width: 76px !important;
+}
+.sidebar.slim span, .sidebar.slim .chevron-icon, .sidebar.slim .menu-header-label {
+  display: none !important;
 }
 .sidebar.slim .nav-item {
-  justify-content: center;
+  justify-content: center !important;
   padding: 12px !important;
 }
+
+/* Floating Circular Chevron Toggle Button (on sidebar border) */
+.sidebar-floating-toggle {
+  position: absolute;
+  top: 24px;
+  right: -16px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #FFFFFF;
+  border: 1px solid var(--border-color);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary-600);
+  cursor: pointer;
+  z-index: 120;
+  transition: all 0.2s ease;
+}
+
+.sidebar-floating-toggle:hover {
+  background: var(--primary-50);
+  color: var(--primary-700);
+  transform: scale(1.1);
+  box-shadow: 0 6px 16px rgba(245, 158, 11, 0.25);
+}
+
 /* ===== Page Header & Titles ===== */
 .page-header {
   margin-bottom: 32px;
@@ -736,3 +768,34 @@ body {
     padding: 3px 8px;
   }
 }
+
+/* ===== Upload Progress Card & Animations ===== */
+@keyframes progressStripes {
+  from { background-position: 40px 0; }
+  to { background-position: 0 0; }
+}
+
+.upload-progress-bar-animated {
+  background-image: linear-gradient(
+    45deg,
+    rgba(255, 255, 255, 0.2) 25%,
+    transparent 25%,
+    transparent 50%,
+    rgba(255, 255, 255, 0.2) 50%,
+    rgba(255, 255, 255, 0.2) 75%,
+    transparent 75%,
+    transparent
+  );
+  background-size: 24px 24px;
+  animation: progressStripes 1s linear infinite;
+}
+
+@keyframes pulseGlowIndigo {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(79, 70, 229, 0.2); }
+  50% { box-shadow: 0 0 0 6px rgba(79, 70, 229, 0); }
+}
+
+.upload-card-active {
+  animation: pulseGlowIndigo 2s infinite ease-in-out;
+}
+

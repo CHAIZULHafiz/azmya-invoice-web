@@ -58,9 +58,6 @@ router.post('/pdf/merge-attachments', auth, async (req, res) => {
     // 2. Download PDF Utama
     console.log(`[MergeAttachments] Downloading: ${existingFileId}`);
     const drive = getDrive();
-    
-    // Clean trash to free quota
-    try { await drive.files.emptyTrash(); } catch(e) {}
 
     let mainPdfBytes;
     try {
@@ -113,15 +110,6 @@ router.post('/pdf/merge-attachments', auth, async (req, res) => {
       media: { mimeType: 'application/pdf', body: bufferStream },
       supportsAllDrives: true,
     });
-
-    // Ensure permissions
-    try {
-      await drive.permissions.create({
-        fileId: existingFileId,
-        requestBody: { role: 'reader', type: 'anyone' },
-        supportsAllDrives: true,
-      });
-    } catch (e) {}
 
     const newLink = `https://drive.google.com/file/d/${existingFileId}/view`;
     await updateCell('MONITORING_INVOICE', `K${rowIndex}`, newLink);

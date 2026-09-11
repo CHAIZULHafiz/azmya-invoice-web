@@ -383,12 +383,14 @@ router.delete('/invoices/:rowIndex', auth, async (req, res) => {
       if (fileIdMatch) {
         try {
           const drive = getDrive();
-          await drive.files.delete({
+          // Pindahkan ke Trash (Soft Delete) agar tidak hilang permanen jika salah klik
+          await drive.files.update({
             fileId: fileIdMatch[1],
+            requestBody: { trashed: true },
             supportsAllDrives: true,
           });
         } catch (driveErr) {
-          console.log('Drive file cleanup skipped:', driveErr.message);
+          console.log('Drive file trash cleanup skipped:', driveErr.message);
         }
       }
     }
