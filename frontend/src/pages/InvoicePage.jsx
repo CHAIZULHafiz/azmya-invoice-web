@@ -13,13 +13,18 @@ export default function InvoicePage() {
   const [invoices, setInvoices] = useState([]);
   const [units, setUnits] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filterUnit, setFilterUnit] = useState('');
-  const [filterStatus, setFilterStatus] = useState('');
-  const [filterPeriode, setFilterPeriode] = useState('');
+  const [filterUnit, setFilterUnit] = useState([]); // Array of string, e.g. ['SCI U1', 'SCI U2']
+  const [filterStatus, setFilterStatus] = useState([]); // Array of string, e.g. ['PENDING', 'DIKIRIM']
+  const [filterPeriode, setFilterPeriode] = useState([]); // Array of string, e.g. ['Januari 2026', 'Februari 2026']
   const [activeFilterMenu, setActiveFilterMenu] = useState(null); // 'unit' | 'periode' | 'status' | null
   const [searchTerm, setSearchTerm] = useState('');
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [actionLoading, setActionLoading] = useState(null);
+
+  // Toggle helper for multi-select filters
+  const toggleFilterItem = (setter, item) => {
+    setter(prev => prev.includes(item) ? prev.filter(x => x !== item) : [...prev, item]);
+  };
   
   // Unified Manage Modal state
   const [manageTarget, setManageTarget] = useState(null);
@@ -112,11 +117,17 @@ export default function InvoicePage() {
   };
 
   const filteredInvoices = invoices.filter(inv => {
-    const matchUnit = filterUnit ? inv.pilihUnit.startsWith(filterUnit) : true;
-    const matchStatus = filterStatus ? (
-      filterStatus === 'OVERDUE' ? inv.isOverdue : inv.statusKirim === filterStatus
-    ) : true;
-    const matchPeriode = filterPeriode ? normalizePeriodeIndo(inv.periode) === filterPeriode : true;
+    const matchUnit = filterUnit.length > 0 
+      ? filterUnit.some(u => inv.pilihUnit.startsWith(u)) 
+      : true;
+
+    const matchStatus = filterStatus.length > 0 
+      ? filterStatus.some(st => st === 'OVERDUE' ? inv.isOverdue : inv.statusKirim === st) 
+      : true;
+
+    const matchPeriode = filterPeriode.length > 0 
+      ? filterPeriode.includes(normalizePeriodeIndo(inv.periode)) 
+      : true;
     
     const term = searchTerm.toLowerCase();
     const matchSearch = term ? (
@@ -141,25 +152,29 @@ export default function InvoicePage() {
   // Extract unique normalized periodes for filter dropdown (sorted chronologically)
   const uniquePeriodes = Array.from(new Set(invoices.map(inv => normalizePeriodeIndo(inv.periode)).filter(Boolean)))
     .sort((a, b) => {
-      const [mA, yA] = a.split(' ');
-      const [mB, yB] = b.split(' ');
+      const partsA = String(a || '').trim().split(/\s+/);
+      const partsB = String(b || '').trim().split(/\s+/);
+      const [mA, yA] = [partsA[0] || '', partsA[1] || ''];
+      const [mB, yB] = [partsB[0] || '', partsB[1] || ''];
       if (yA !== yB) return (parseInt(yA) || 0) - (parseInt(yB) || 0);
       return (monthOrder[mA] || 0) - (monthOrder[mB] || 0);
     });
 
   const sortedInvoices = [...filteredInvoices].sort((a, b) => {
     // 1. Urutkan berdasarkan Tahun
-    const [monthA, yearA] = a.periode.split(' ');
-    const [monthB, yearB] = b.periode.split(' ');
+    const partsA = String(a.periode || '').trim().split(/\s+/);
+    const partsB = String(b.periode || '').trim().split(/\s+/);
+    const [monthA, yearA] = [partsA[0] || '', partsA[1] || ''];
+    const [monthB, yearB] = [partsB[0] || '', partsB[1] || ''];
     
-    if (yearA !== yearB) return parseInt(yearA) - parseInt(yearB);
+    if (yearA !== yearB) return (parseInt(yearA) || 0) - (parseInt(yearB) || 0);
     
     // 2. Urutkan berdasarkan Bulan
     if (monthA !== monthB) return (monthOrder[monthA] || 0) - (monthOrder[monthB] || 0);
     
     // 3. Urutkan berdasarkan Tipe Unit (SCI dulu, baru SLB)
-    const unitA = a.pilihUnit.split(' - ')[0];
-    const unitB = b.pilihUnit.split(' - ')[0];
+    const unitA = String(a.pilihUnit || '').split(' - ')[0];
+    const unitB = String(b.pilihUnit || '').split(' - ')[0];
     
     const typeA = unitA.startsWith('SCI') ? 0 : 1;
     const typeB = unitB.startsWith('SCI') ? 0 : 1;
@@ -190,8 +205,10 @@ export default function InvoicePage() {
       'May': 'Mei', 'June': 'Juni', 'July': 'Juli', 'August': 'Agustus',
       'September': 'September', 'October': 'Oktober', 'November': 'November', 'December': 'Desember'
     };
-    const [month, year] = periode.split(' ');
-    return `${monthMap[month] || month} ${year || ''}`.trim();
+    const parts = String(periode).trim().split(/\s+/);
+    const [month, ...rest] = parts;
+    const year = rest.join(' ');
+    return `${monthMap[month] || month} ${year}`.trim();
   };
 
   const submitStatusUpdate = async () => {
@@ -393,33 +410,37 @@ export default function InvoicePage() {
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '16px', background: '#fff', padding: '10px 16px', borderRadius: '12px', border: '1px solid var(--border-color)', minHeight: '46px' }}>
         <span style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Filter Aktif:</span>
         
-        {!(filterUnit || filterStatus || filterPeriode || searchTerm) ? (
+        {filterUnit.length === 0 && filterStatus.length === 0 && filterPeriode.length === 0 && !searchTerm ? (
           <span style={{ fontSize: '13px', color: 'var(--text-muted)', fontStyle: 'italic' }}>
             Semua data ditampilkan (tidak ada filter aktif)
           </span>
         ) : (
           <>
-            {filterUnit && (
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#EEF2FF', color: '#4F46E5', fontSize: '12px', fontWeight: '600', padding: '4px 10px', borderRadius: '20px' }}>
-                Unit: {filterUnit}
-                <X size={13} style={{ cursor: 'pointer' }} onClick={() => setFilterUnit('')} />
+            {/* Unit Badges */}
+            {filterUnit.map(u => (
+              <span key={u} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#EEF2FF', color: '#4F46E5', fontSize: '12px', fontWeight: '600', padding: '4px 10px', borderRadius: '20px' }}>
+                Unit: {u}
+                <X size={13} style={{ cursor: 'pointer' }} onClick={() => toggleFilterItem(setFilterUnit, u)} />
               </span>
-            )}
+            ))}
 
-            {filterPeriode && (
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#F0FDF4', color: '#16A34A', fontSize: '12px', fontWeight: '600', padding: '4px 10px', borderRadius: '20px' }}>
-                Periode: {formatPeriodeIndo(filterPeriode)}
-                <X size={13} style={{ cursor: 'pointer' }} onClick={() => setFilterPeriode('')} />
+            {/* Periode Badges */}
+            {filterPeriode.map(p => (
+              <span key={p} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#F0FDF4', color: '#16A34A', fontSize: '12px', fontWeight: '600', padding: '4px 10px', borderRadius: '20px' }}>
+                {p}
+                <X size={13} style={{ cursor: 'pointer' }} onClick={() => toggleFilterItem(setFilterPeriode, p)} />
               </span>
-            )}
+            ))}
 
-            {filterStatus && (
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#FEF3C7', color: '#D97706', fontSize: '12px', fontWeight: '600', padding: '4px 10px', borderRadius: '20px' }}>
-                Status: {filterStatus}
-                <X size={13} style={{ cursor: 'pointer' }} onClick={() => setFilterStatus('')} />
+            {/* Status Badges */}
+            {filterStatus.map(st => (
+              <span key={st} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#FEF3C7', color: '#D97706', fontSize: '12px', fontWeight: '600', padding: '4px 10px', borderRadius: '20px' }}>
+                {st}
+                <X size={13} style={{ cursor: 'pointer' }} onClick={() => toggleFilterItem(setFilterStatus, st)} />
               </span>
-            )}
+            ))}
 
+            {/* Search Term Badge */}
             {searchTerm && (
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#F3F4F6', color: '#4B5563', fontSize: '12px', fontWeight: '600', padding: '4px 10px', borderRadius: '20px' }}>
                 Cari: "{searchTerm}"
@@ -428,7 +449,7 @@ export default function InvoicePage() {
             )}
 
             <button 
-              onClick={() => { setFilterUnit(''); setFilterStatus(''); setFilterPeriode(''); setSearchTerm(''); }}
+              onClick={() => { setFilterUnit([]); setFilterStatus([]); setFilterPeriode([]); setSearchTerm(''); }}
               style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#EF4444', fontSize: '12px', fontWeight: '600', cursor: 'pointer', textDecoration: 'underline' }}
             >
               Reset Semua Filter
@@ -443,10 +464,10 @@ export default function InvoicePage() {
           <div style={{ padding: '60px', textAlign: 'center', color: 'var(--text-muted)' }}>
             <FileText size={48} style={{ marginBottom: '12px', opacity: 0.3 }} />
             <p>Belum ada data invoice yang sesuai kriteria</p>
-            {(filterUnit || filterStatus || filterPeriode || searchTerm) && (
+            {(filterUnit.length > 0 || filterStatus.length > 0 || filterPeriode.length > 0 || searchTerm) && (
               <button 
                 className="btn btn-secondary btn-sm"
-                onClick={() => { setFilterUnit(''); setFilterStatus(''); setFilterPeriode(''); setSearchTerm(''); }}
+                onClick={() => { setFilterUnit([]); setFilterStatus([]); setFilterPeriode([]); setSearchTerm(''); }}
                 style={{ marginTop: '12px' }}
               >
                 Hapus Filter
@@ -461,7 +482,7 @@ export default function InvoicePage() {
                   <tr>
                     <th>NO</th>
 
-                    {/* UNIT with filter dropdown */}
+                    {/* UNIT with Multi-select filter dropdown */}
                     <th style={{ position: 'relative', overflow: 'visible' }}>
                       <div 
                         className="filter-toggle-btn"
@@ -471,8 +492,10 @@ export default function InvoicePage() {
                           setActiveFilterMenu(prev => prev === 'unit' ? null : 'unit');
                         }}
                       >
-                        <span style={{ color: filterUnit ? '#4F46E5' : 'inherit', fontWeight: filterUnit ? '800' : 'inherit' }}>UNIT</span>
-                        <Filter size={13} color={filterUnit ? '#4F46E5' : '#9CA3AF'} />
+                        <span style={{ color: filterUnit.length > 0 ? '#4F46E5' : 'inherit', fontWeight: filterUnit.length > 0 ? '800' : 'inherit' }}>
+                          UNIT {filterUnit.length > 0 ? `(${filterUnit.length})` : ''}
+                        </span>
+                        <Filter size={13} color={filterUnit.length > 0 ? '#4F46E5' : '#9CA3AF'} />
                         {activeFilterMenu === 'unit' ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
                       </div>
 
@@ -486,30 +509,57 @@ export default function InvoicePage() {
                             zIndex: 9999,
                             background: '#fff',
                             border: '1px solid var(--border-color)',
-                            borderRadius: '10px',
-                            boxShadow: '0 10px 25px -5px rgba(0,0,0,0.2)',
-                            minWidth: '160px',
+                            borderRadius: '12px',
+                            boxShadow: '0 12px 30px -5px rgba(0,0,0,0.22)',
+                            minWidth: '200px',
                             padding: '6px 0',
                             marginTop: '4px',
                             textAlign: 'left'
                           }}
                           onClick={(e) => e.stopPropagation()}
                         >
-                          <div 
-                            style={{ padding: '8px 14px', fontSize: '12px', cursor: 'pointer', fontWeight: !filterUnit ? '700' : 'normal', background: !filterUnit ? '#EEF2FF' : 'transparent', color: !filterUnit ? '#4F46E5' : '#374151' }}
-                            onClick={() => { setFilterUnit(''); setActiveFilterMenu(null); }}
-                          >
-                            Semua Unit
+                          <div style={{ padding: '6px 14px 8px', borderBottom: '1px solid #F1F5F9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: '11px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Pilih Unit</span>
+                            {filterUnit.length > 0 && (
+                              <button 
+                                onClick={() => setFilterUnit([])}
+                                style={{ background: 'none', border: 'none', color: '#EF4444', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
+                              >
+                                Reset
+                              </button>
+                            )}
                           </div>
-                          {units.map(u => (
-                            <div 
-                              key={u.unit}
-                              style={{ padding: '8px 14px', fontSize: '12px', cursor: 'pointer', fontWeight: filterUnit === u.unit ? '700' : 'normal', background: filterUnit === u.unit ? '#EEF2FF' : 'transparent', color: filterUnit === u.unit ? '#4F46E5' : '#374151' }}
-                              onClick={() => { setFilterUnit(u.unit); setActiveFilterMenu(null); }}
-                            >
-                              {u.unit}
-                            </div>
-                          ))}
+                          
+                          <div style={{ maxHeight: '240px', overflowY: 'auto', padding: '4px 0' }}>
+                            {units.map(u => {
+                              const isChecked = filterUnit.includes(u.unit);
+                              return (
+                                <div 
+                                  key={u.unit}
+                                  style={{
+                                    padding: '8px 14px',
+                                    fontSize: '12px',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    background: isChecked ? '#EEF2FF' : 'transparent',
+                                    color: isChecked ? '#4F46E5' : '#374151',
+                                    fontWeight: isChecked ? '700' : '500'
+                                  }}
+                                  onClick={() => toggleFilterItem(setFilterUnit, u.unit)}
+                                >
+                                  <input 
+                                    type="checkbox" 
+                                    checked={isChecked} 
+                                    onChange={() => {}} 
+                                    style={{ cursor: 'pointer', accentColor: '#4F46E5', width: '14px', height: '14px' }} 
+                                  />
+                                  <span>{u.unit}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
                       )}
                     </th>
@@ -517,7 +567,7 @@ export default function InvoicePage() {
                     <th>NO INVOICE</th>
                     {hasSLB && <th>NO PO / DP</th>}
 
-                    {/* PERIODE with filter dropdown */}
+                    {/* PERIODE with Multi-select filter dropdown */}
                     <th style={{ position: 'relative', overflow: 'visible' }}>
                       <div 
                         className="filter-toggle-btn"
@@ -527,8 +577,10 @@ export default function InvoicePage() {
                           setActiveFilterMenu(prev => prev === 'periode' ? null : 'periode');
                         }}
                       >
-                        <span style={{ color: filterPeriode ? '#16A34A' : 'inherit', fontWeight: filterPeriode ? '800' : 'inherit' }}>PERIODE</span>
-                        <Filter size={13} color={filterPeriode ? '#16A34A' : '#9CA3AF'} />
+                        <span style={{ color: filterPeriode.length > 0 ? '#16A34A' : 'inherit', fontWeight: filterPeriode.length > 0 ? '800' : 'inherit' }}>
+                          PERIODE {filterPeriode.length > 0 ? `(${filterPeriode.length})` : ''}
+                        </span>
+                        <Filter size={13} color={filterPeriode.length > 0 ? '#16A34A' : '#9CA3AF'} />
                         {activeFilterMenu === 'periode' ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
                       </div>
 
@@ -542,32 +594,60 @@ export default function InvoicePage() {
                             zIndex: 9999,
                             background: '#fff',
                             border: '1px solid var(--border-color)',
-                            borderRadius: '10px',
-                            boxShadow: '0 10px 25px -5px rgba(0,0,0,0.2)',
-                            minWidth: '180px',
-                            maxHeight: '260px',
-                            overflowY: 'auto',
+                            borderRadius: '12px',
+                            boxShadow: '0 12px 30px -5px rgba(0,0,0,0.22)',
+                            minWidth: '200px',
+                            maxHeight: '300px',
                             padding: '6px 0',
                             marginTop: '4px',
-                            textAlign: 'left'
+                            textAlign: 'left',
+                            display: 'flex',
+                            flexDirection: 'column'
                           }}
                           onClick={(e) => e.stopPropagation()}
                         >
-                          <div 
-                            style={{ padding: '8px 14px', fontSize: '12px', cursor: 'pointer', fontWeight: !filterPeriode ? '700' : 'normal', background: !filterPeriode ? '#F0FDF4' : 'transparent', color: !filterPeriode ? '#16A34A' : '#374151' }}
-                            onClick={() => { setFilterPeriode(''); setActiveFilterMenu(null); }}
-                          >
-                            Semua Periode
+                          <div style={{ padding: '6px 14px 8px', borderBottom: '1px solid #F1F5F9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: '11px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Pilih Periode</span>
+                            {filterPeriode.length > 0 && (
+                              <button 
+                                onClick={() => setFilterPeriode([])}
+                                style={{ background: 'none', border: 'none', color: '#EF4444', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
+                              >
+                                Reset
+                              </button>
+                            )}
                           </div>
-                          {uniquePeriodes.map(p => (
-                            <div 
-                              key={p}
-                              style={{ padding: '8px 14px', fontSize: '12px', cursor: 'pointer', fontWeight: filterPeriode === p ? '700' : 'normal', background: filterPeriode === p ? '#F0FDF4' : 'transparent', color: filterPeriode === p ? '#16A34A' : '#374151' }}
-                              onClick={() => { setFilterPeriode(p); setActiveFilterMenu(null); }}
-                            >
-                              {formatPeriodeIndo(p)}
-                            </div>
-                          ))}
+
+                          <div style={{ maxHeight: '240px', overflowY: 'auto', padding: '4px 0' }}>
+                            {uniquePeriodes.map(p => {
+                              const isChecked = filterPeriode.includes(p);
+                              return (
+                                <div 
+                                  key={p}
+                                  style={{
+                                    padding: '8px 14px',
+                                    fontSize: '12px',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    background: isChecked ? '#F0FDF4' : 'transparent',
+                                    color: isChecked ? '#16A34A' : '#374151',
+                                    fontWeight: isChecked ? '700' : '500'
+                                  }}
+                                  onClick={() => toggleFilterItem(setFilterPeriode, p)}
+                                >
+                                  <input 
+                                    type="checkbox" 
+                                    checked={isChecked} 
+                                    onChange={() => {}} 
+                                    style={{ cursor: 'pointer', accentColor: '#16A34A', width: '14px', height: '14px' }} 
+                                  />
+                                  <span>{formatPeriodeIndo(p)}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
                       )}
                     </th>
@@ -576,7 +656,7 @@ export default function InvoicePage() {
                     <th>TGL KIRIM</th>
                     <th>JATUH TEMPO</th>
 
-                    {/* STATUS with filter dropdown */}
+                    {/* STATUS with Multi-select filter dropdown */}
                     <th style={{ position: 'relative', overflow: 'visible' }}>
                       <div 
                         className="filter-toggle-btn"
@@ -586,8 +666,10 @@ export default function InvoicePage() {
                           setActiveFilterMenu(prev => prev === 'status' ? null : 'status');
                         }}
                       >
-                        <span style={{ color: filterStatus ? '#D97706' : 'inherit', fontWeight: filterStatus ? '800' : 'inherit' }}>STATUS</span>
-                        <Filter size={13} color={filterStatus ? '#D97706' : '#9CA3AF'} />
+                        <span style={{ color: filterStatus.length > 0 ? '#D97706' : 'inherit', fontWeight: filterStatus.length > 0 ? '800' : 'inherit' }}>
+                          STATUS {filterStatus.length > 0 ? `(${filterStatus.length})` : ''}
+                        </span>
+                        <Filter size={13} color={filterStatus.length > 0 ? '#D97706' : '#9CA3AF'} />
                         {activeFilterMenu === 'status' ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
                       </div>
 
@@ -601,30 +683,57 @@ export default function InvoicePage() {
                             zIndex: 9999,
                             background: '#fff',
                             border: '1px solid var(--border-color)',
-                            borderRadius: '10px',
-                            boxShadow: '0 10px 25px -5px rgba(0,0,0,0.2)',
-                            minWidth: '170px',
+                            borderRadius: '12px',
+                            boxShadow: '0 12px 30px -5px rgba(0,0,0,0.22)',
+                            minWidth: '190px',
                             padding: '6px 0',
                             marginTop: '4px',
                             textAlign: 'left'
                           }}
                           onClick={(e) => e.stopPropagation()}
                         >
-                          <div 
-                            style={{ padding: '8px 14px', fontSize: '12px', cursor: 'pointer', fontWeight: !filterStatus ? '700' : 'normal', background: !filterStatus ? '#FEF3C7' : 'transparent', color: !filterStatus ? '#D97706' : '#374151' }}
-                            onClick={() => { setFilterStatus(''); setActiveFilterMenu(null); }}
-                          >
-                            Semua Status
+                          <div style={{ padding: '6px 14px 8px', borderBottom: '1px solid #F1F5F9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: '11px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Pilih Status</span>
+                            {filterStatus.length > 0 && (
+                              <button 
+                                onClick={() => setFilterStatus([])}
+                                style={{ background: 'none', border: 'none', color: '#EF4444', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
+                              >
+                                Reset
+                              </button>
+                            )}
                           </div>
-                          {['PENDING', 'MENUNGGU PO', 'DIKIRIM', 'LUNAS', 'OVERDUE'].map(st => (
-                            <div 
-                              key={st}
-                              style={{ padding: '8px 14px', fontSize: '12px', cursor: 'pointer', fontWeight: filterStatus === st ? '700' : 'normal', background: filterStatus === st ? '#FEF3C7' : 'transparent', color: filterStatus === st ? '#D97706' : '#374151' }}
-                              onClick={() => { setFilterStatus(st); setActiveFilterMenu(null); }}
-                            >
-                              {st === 'OVERDUE' ? '⚠️ OVERDUE' : st}
-                            </div>
-                          ))}
+
+                          <div style={{ padding: '4px 0' }}>
+                            {['PENDING', 'MENUNGGU PO', 'DIKIRIM', 'LUNAS', 'OVERDUE'].map(st => {
+                              const isChecked = filterStatus.includes(st);
+                              return (
+                                <div 
+                                  key={st}
+                                  style={{
+                                    padding: '8px 14px',
+                                    fontSize: '12px',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    background: isChecked ? '#FEF3C7' : 'transparent',
+                                    color: isChecked ? '#D97706' : '#374151',
+                                    fontWeight: isChecked ? '700' : '500'
+                                  }}
+                                  onClick={() => toggleFilterItem(setFilterStatus, st)}
+                                >
+                                  <input 
+                                    type="checkbox" 
+                                    checked={isChecked} 
+                                    onChange={() => {}} 
+                                    style={{ cursor: 'pointer', accentColor: '#D97706', width: '14px', height: '14px' }} 
+                                  />
+                                  <span>{st === 'OVERDUE' ? '⚠️ OVERDUE' : st}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
                       )}
                     </th>
