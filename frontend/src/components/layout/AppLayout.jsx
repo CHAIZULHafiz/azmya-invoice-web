@@ -1,3 +1,4 @@
+// CV. AZMYA CAR TRANSINDO - Invoice Web App (Updated 2026-09-13)
 import { useState, useEffect } from 'react';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, FileText, Truck, LogIn, User, MoreVertical, LogOut, FilePlus, Menu, X } from 'lucide-react';
